@@ -30,7 +30,7 @@ With this distribution, you simply attach the MCP Server's JVM Agent to your app
 
 ## Features
 
-This MCP server connects to a single JVM at startup and provides the following features on the connected JVM:
+This MCP server connects to a default JVM configured at startup and provides the following features on the connected JVM:
 
 - List MBeans from the connected JVM
 - List operations for a MBean
@@ -38,9 +38,11 @@ This MCP server connects to a single JVM at startup and provides the following f
 - Read/write attributes of a MBean
 - Execute operations on a MBean
 
+With the standalone MCP server, every tool also accepts an optional `url` argument that targets a different Jolokia agent for that call, so a single MCP session can work with many JVMs. See [Targeting multiple JVMs](#targeting-multiple-jvms).
+
 ### Tools
 
-This MCP server provides 6 tools.
+This MCP server provides 6 tools. Every tool also accepts the optional input `url` (`String`): the Jolokia agent URL to target (standalone MCP server only). When omitted, the URL the server was started with is used.
 
 - **listMBeans**
   - List available MBeans from the JVM
@@ -177,6 +179,15 @@ java -jar jolokia-mcp-server-0.6.1-runner.jar --http
 ```
 
 The HTTP transport endpoint by default launches at <http://localhost:8080/mcp>.
+
+### Targeting multiple JVMs
+
+The Jolokia URL given at startup is only the default target. Any tool call can pass a `url` argument (e.g. `http://orders-service:8778/jolokia`) to run against another Jolokia agent instead, so one MCP server can reach any number of JVMs without being restarted or registered once per JVM.
+
+The server opens one Jolokia client per target URL and keeps up to 100 of them open, closing the least recently used. Only `http` and `https` URLs are accepted. The JVM Agent MCP Server always serves its own JVM and rejects the `url` argument.
+
+> [!WARNING]
+> With `url`, the MCP server will send Jolokia requests to any HTTP(S) endpoint an MCP client asks for. Run it only where the clients that can reach it are trusted to access every network location that the server can reach, especially when using the HTTP transport.
 
 ## Config Options
 

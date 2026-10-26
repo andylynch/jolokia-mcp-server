@@ -16,11 +16,18 @@
  */
 package org.jolokia.mcp;
 
+import java.io.IOException;
+import java.net.URI;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import javax.management.MalformedObjectNameException;
+import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jolokia.client.EscapeUtil;
@@ -35,21 +42,97 @@ import org.jolokia.client.response.JolokiaListResponse;
 import org.jolokia.client.response.JolokiaReadResponse;
 import org.jolokia.client.response.JolokiaWriteResponse;
 import org.jolokia.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @ApplicationScoped
 public class JolokiaClient implements JolokiaService {
 
+    private static final Logger LOG = LoggerFactory.getLogger(JolokiaClient.class);
+
+    /**
+     * Maximum number of clients for non-default targets kept open at the same time.
+     */
+    static final int MAX_TARGETS = 100;
+
+    final String url;
     org.jolokia.client.JolokiaClient jolokiaClient;
     MBeanListCache mbeanListCache;
 
     private Optional<HttpMethod> preferredHttpMethod = Optional.empty();
 
+    /**
+     * Clients for targets other than the default one, evicted in least-recently-used order.
+     */
+    private final Map<String, JolokiaClient> targets = Collections.synchronizedMap(
+        new LinkedHashMap<>(16, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, JolokiaClient> eldest) {
+                if (size() > MAX_TARGETS) {
+                    eldest.getValue().close();
+                    return true;
+                }
+                return false;
+            }
+        });
+
+    @Inject
     public JolokiaClient(@ConfigProperty(name = "jolokia.mcp.url", defaultValue = "http://localhost:8778/jolokia")
                          String jolokiaUrl,
                          @ConfigProperty(name = "jolokia.mcp.preferred-http-method")
                          Optional<String> preferredHttpMethod) {
-        jolokiaClient = new org.jolokia.client.JolokiaClientBuilder().url(jolokiaUrl).build();
+        this(jolokiaUrl);
         preferredHttpMethod.ifPresent(this::setPreferredHttpMethod);
+    }
+
+    private JolokiaClient(String jolokiaUrl) {
+        this.url = jolokiaUrl;
+        jolokiaClient = new org.jolokia.client.JolokiaClientBuilder().url(jolokiaUrl).build();
+    }
+
+    @Override
+    public JolokiaClient forUrl(String url) {
+        if (url == null || url.isBlank() || url.trim().equals(this.url)) {
+            return this;
+        }
+        String target = validateUrl(url.trim());
+        return targets.computeIfAbsent(target, u -> {
+            LOG.info("Create Jolokia client for {}", u);
+            JolokiaClient client = new JolokiaClient(u);
+            client.preferredHttpMethod = preferredHttpMethod;
+            return client;
+        });
+    }
+
+    static String validateUrl(String url) {
+        URI uri;
+        try {
+            uri = URI.create(url);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid Jolokia URL: " + url, e);
+        }
+        String scheme = uri.getScheme();
+        if (uri.getHost() == null || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+            throw new IllegalArgumentException("Invalid Jolokia URL (expected http(s)://host[:port]/path): " + url);
+        }
+        return url;
+    }
+
+    @PreDestroy
+    void closeAll() {
+        synchronized (targets) {
+            targets.values().forEach(JolokiaClient::close);
+            targets.clear();
+        }
+        close();
+    }
+
+    void close() {
+        try {
+            jolokiaClient.close();
+        } catch (IOException e) {
+            LOG.warn("Failed to close Jolokia client for {}: {}", url, e.getMessage());
+        }
     }
 
     public List<String> listMBeans() throws JolokiaException {

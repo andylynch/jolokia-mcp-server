@@ -23,6 +23,20 @@ import org.jolokia.json.JSONObject;
 
 public interface JolokiaService {
 
+    /**
+     * Resolve the service to use for the given Jolokia agent URL.
+     *
+     * @param url Jolokia agent URL, or {@code null}/blank for the default target
+     * @return the service for the given URL
+     * @throws UnsupportedOperationException if the implementation cannot target other agents
+     */
+    default JolokiaService forUrl(String url) {
+        if (url == null || url.isBlank()) {
+            return this;
+        }
+        throw new UnsupportedOperationException("Targeting a Jolokia URL is not supported by this MCP server");
+    }
+
     List<String> listMBeans() throws Exception;
 
     JSONObject listOperations(String mbean) throws Exception;

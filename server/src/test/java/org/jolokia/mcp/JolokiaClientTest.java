@@ -34,7 +34,9 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @QuarkusTest
 @TestProfile(JettyTestResource.class)
@@ -87,6 +89,34 @@ class JolokiaClientTest {
     @Test
     void testExec() {
         assertDoesNotThrow(() -> jolokiaClient.exec("java.lang:type=Memory", "gc"));
+    }
+
+    @Test
+    void testForUrlDefault() {
+        // Injected bean is a client proxy, so compare against the underlying instance
+        JolokiaClient defaultClient = jolokiaClient.forUrl(null);
+        assertSame(defaultClient, jolokiaClient.forUrl(" "));
+        assertSame(defaultClient, jolokiaClient.forUrl("http://localhost:%s/jolokia".formatted(JettyTestResource.port)));
+    }
+
+    @Test
+    void testForUrl() throws Exception {
+        String url = "http://127.0.0.1:%s/jolokia".formatted(JettyTestResource.port);
+        JolokiaClient target = jolokiaClient.forUrl(url);
+        assertNotSame(jolokiaClient, target);
+        assertSame(target, jolokiaClient.forUrl(url));
+        assertFalse(target.listMBeans().isEmpty());
+        assertNotNull(target.read("java.lang:type=OperatingSystem", "Name").orElse(null));
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideInvalidUrls")
+    void testForUrlInvalid(String url) {
+        assertThrows(IllegalArgumentException.class, () -> jolokiaClient.forUrl(url));
+    }
+
+    static Stream<String> provideInvalidUrls() {
+        return Stream.of("localhost:8778/jolokia", "file:///etc/passwd", "http://", "http://bad host/jolokia");
     }
 
     @ParameterizedTest

@@ -34,6 +34,9 @@ public class JolokiaMcpServer {
 
     private static final Logger LOG = LoggerFactory.getLogger(JolokiaMcpServer.class);
 
+    private static final String URL_DESCRIPTION =
+        "Jolokia agent URL to target (e.g. http://host:8778/jolokia). Defaults to the URL the server was started with";
+
     @Inject
     JolokiaService jolokiaService;
 
@@ -42,9 +45,9 @@ public class JolokiaMcpServer {
     }
 
     @Tool(description = "List available MBeans from the JVM")
-    ToolResponse listMBeans() {
+    ToolResponse listMBeans(@ToolArg(description = URL_DESCRIPTION, required = false) String url) {
         try {
-            List<String> mbeans = jolokiaService.listMBeans();
+            List<String> mbeans = jolokiaService.forUrl(url).listMBeans();
             return ToolResponse.success(mbeans.stream().map(TextContent::new).toList());
         } catch (Exception e) {
             LOG.error("listMBeans: " + e.getMessage(), e);
@@ -53,9 +56,11 @@ public class JolokiaMcpServer {
     }
 
     @Tool(description = "List available operations for a given MBean")
-    ToolResponse listMBeanOperations(@ToolArg(description = "MBean name") String mbean) {
+    ToolResponse listMBeanOperations(
+        @ToolArg(description = URL_DESCRIPTION, required = false) String url,
+        @ToolArg(description = "MBean name") String mbean) {
         try {
-            JSONObject ops = jolokiaService.listOperations(mbean);
+            JSONObject ops = jolokiaService.forUrl(url).listOperations(mbean);
             return ToolResponse.success(ops.toJSONString());
         } catch (Exception e) {
             LOG.error("listMBeanOperations: " + e.getMessage(), e);
@@ -64,9 +69,11 @@ public class JolokiaMcpServer {
     }
 
     @Tool(description = "List available attributes for a given MBean")
-    ToolResponse listMBeanAttributes(@ToolArg(description = "MBean name") String mbean) {
+    ToolResponse listMBeanAttributes(
+        @ToolArg(description = URL_DESCRIPTION, required = false) String url,
+        @ToolArg(description = "MBean name") String mbean) {
         try {
-            JSONObject attrs = jolokiaService.listAttributes(mbean);
+            JSONObject attrs = jolokiaService.forUrl(url).listAttributes(mbean);
             return ToolResponse.success(attrs.toJSONString());
         } catch (Exception e) {
             LOG.error("listMBeanAttributes: " + e.getMessage(), e);
@@ -76,10 +83,11 @@ public class JolokiaMcpServer {
 
     @Tool(description = "Read an attribute from a given MBean")
     ToolResponse readMBeanAttribute(
+        @ToolArg(description = URL_DESCRIPTION, required = false) String url,
         @ToolArg(description = "MBean name") String mbean,
         @ToolArg(description = "Attribute name") String attribute) {
         try {
-            Optional<Object> response = jolokiaService.read(mbean, attribute);
+            Optional<Object> response = jolokiaService.forUrl(url).read(mbean, attribute);
             return ToolResponse.success(response.orElse("null").toString());
         } catch (Exception e) {
             LOG.error("readMBeanAttribute: " + e.getMessage(), e);
@@ -89,11 +97,12 @@ public class JolokiaMcpServer {
 
     @Tool(description = "Set the value to an attribute of a given MBean")
     ToolResponse writeMBeanAttribute(
+        @ToolArg(description = URL_DESCRIPTION, required = false) String url,
         @ToolArg(description = "MBean name") String mbean,
         @ToolArg(description = "Attribute name") String attribute,
         @ToolArg(description = "Attribute value") Object value) {
         try {
-            Optional<Object> response = jolokiaService.write(mbean, attribute, value);
+            Optional<Object> response = jolokiaService.forUrl(url).write(mbean, attribute, value);
             return ToolResponse.success(response.orElse("null").toString());
         } catch (Exception e) {
             LOG.error("writeMBeanAttribute: " + e.getMessage(), e);
@@ -103,11 +112,12 @@ public class JolokiaMcpServer {
 
     @Tool(description = "Execute an operation on a given MBean")
     ToolResponse executeMBeanOperation(
+        @ToolArg(description = URL_DESCRIPTION, required = false) String url,
         @ToolArg(description = "MBean name") String mbean,
         @ToolArg(description = "Operation name") String operation,
         @ToolArg(description = "Arguments") Object... args) {
         try {
-            Optional<Object> response = jolokiaService.exec(mbean, operation, args);
+            Optional<Object> response = jolokiaService.forUrl(url).exec(mbean, operation, args);
             return ToolResponse.success(response.orElse("null").toString());
         } catch (Exception e) {
             LOG.error("executeMBeanOperation: " + e.getMessage(), e);
